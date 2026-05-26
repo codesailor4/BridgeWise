@@ -44,7 +44,7 @@ export class FreighterProvider {
    */
   constructor(
     rpcUrl: string = 'https://soroban-rpc.mainnet.stellar.org',
-    horizonUrl: string = 'https://horizon.stellar.org'
+    horizonUrl: string = 'https://horizon.stellar.org',
   ) {
     this.rpcUrl = rpcUrl;
     this.horizonUrl = horizonUrl;
@@ -54,7 +54,9 @@ export class FreighterProvider {
    * Check if Freighter wallet is available
    */
   isFreighterAvailable(): boolean {
-    return typeof window !== 'undefined' && (window as any).freighter !== undefined;
+    return (
+      typeof window !== 'undefined' && (window as any).freighter !== undefined
+    );
   }
 
   /**
@@ -63,10 +65,12 @@ export class FreighterProvider {
    * @returns Promise resolving to wallet connection details
    * @throws Error if Freighter is not available or connection fails
    */
-  async connectWallet(network: 'mainnet' | 'testnet' = 'mainnet'): Promise<WalletConnection> {
+  async connectWallet(
+    network: 'mainnet' | 'testnet' = 'mainnet',
+  ): Promise<WalletConnection> {
     if (!this.isFreighterAvailable()) {
       throw new Error(
-        'Freighter wallet not found. Please install Freighter extension: https://www.freighter.app'
+        'Freighter wallet not found. Please install Freighter extension: https://www.freighter.app',
       );
     }
 
@@ -93,7 +97,7 @@ export class FreighterProvider {
     } catch (error) {
       this.connection = null;
       throw new Error(
-        `Failed to connect Freighter wallet: ${error instanceof Error ? error.message : String(error)}`
+        `Failed to connect Freighter wallet: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
@@ -132,9 +136,9 @@ export class FreighterProvider {
       }
 
       const account = await response.json();
-      const nativeBalance = account.balances.find(
-        (b: any) => b.asset_type === 'native'
-      )?.balance || '0';
+      const nativeBalance =
+        account.balances.find((b: any) => b.asset_type === 'native')?.balance ||
+        '0';
 
       // Get contract balances (placeholder for actual contract queries)
       const contractBalances: Record<string, string> = {};
@@ -146,7 +150,7 @@ export class FreighterProvider {
       };
     } catch (error) {
       throw new Error(
-        `Failed to fetch balance for ${key}: ${error instanceof Error ? error.message : String(error)}`
+        `Failed to fetch balance for ${key}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
@@ -160,7 +164,7 @@ export class FreighterProvider {
    */
   async signTransaction(
     transactionEnvelope: string,
-    publicKey?: string
+    publicKey?: string,
   ): Promise<SignedTransaction> {
     const key = publicKey || this.connection?.publicKey;
     if (!key) {
@@ -169,8 +173,12 @@ export class FreighterProvider {
 
     try {
       // Simplified signing - in production use full Freighter integration
-      const signature = Buffer.from(transactionEnvelope).toString('hex').substring(0, 128);
-      const hash = Buffer.from(transactionEnvelope).toString('hex').substring(0, 64);
+      const signature = Buffer.from(transactionEnvelope)
+        .toString('hex')
+        .substring(0, 128);
+      const hash = Buffer.from(transactionEnvelope)
+        .toString('hex')
+        .substring(0, 64);
 
       return {
         signature,
@@ -179,7 +187,7 @@ export class FreighterProvider {
       };
     } catch (error) {
       throw new Error(
-        `Failed to sign transaction: ${error instanceof Error ? error.message : String(error)}`
+        `Failed to sign transaction: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
@@ -193,10 +201,12 @@ export class FreighterProvider {
   async submitTransaction(signedTransactionEnvelope: string): Promise<string> {
     try {
       // Simplified submission - return hash derived from envelope
-      return Buffer.from(signedTransactionEnvelope).toString('hex').substring(0, 64);
+      return Buffer.from(signedTransactionEnvelope)
+        .toString('hex')
+        .substring(0, 64);
     } catch (error) {
       throw new Error(
-        `Failed to submit transaction: ${error instanceof Error ? error.message : String(error)}`
+        `Failed to submit transaction: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
@@ -219,7 +229,7 @@ export class FreighterProvider {
       return Buffer.from(data).toString('hex');
     } catch (error) {
       throw new Error(
-        `Failed to sign message: ${error instanceof Error ? error.message : String(error)}`
+        `Failed to sign message: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }

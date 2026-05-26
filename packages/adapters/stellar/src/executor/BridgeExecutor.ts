@@ -1,5 +1,14 @@
-﻿import { FreighterProvider, WalletConnection, SignedTransaction } from "../wallet/FreighterProvider";
-import { BridgeContract, BridgeOperationParams, BridgeOperationResult, SorobanAccount } from "../contracts/BridgeContract";
+﻿import {
+  FreighterProvider,
+  WalletConnection,
+  SignedTransaction,
+} from '../wallet/FreighterProvider';
+import {
+  BridgeContract,
+  BridgeOperationParams,
+  BridgeOperationResult,
+  SorobanAccount,
+} from '../contracts/BridgeContract';
 
 export interface BridgeTransactionDetails {
   sourceChain: string;
@@ -34,7 +43,7 @@ export class StellarBridgeExecutor {
   constructor(
     wallet: FreighterProvider,
     bridgeContract: BridgeContract,
-    horizonUrl: string = "https://horizon.stellar.org"
+    horizonUrl: string = 'https://horizon.stellar.org',
   ) {
     this.wallet = wallet;
     this.bridgeContract = bridgeContract;
@@ -43,13 +52,13 @@ export class StellarBridgeExecutor {
 
   async executeTransfer(
     transfer: BridgeTransactionDetails,
-    options: TransferOptions = {}
+    options: TransferOptions = {},
   ): Promise<TransferExecutionResult> {
     const startTime = Date.now();
     try {
       this.walletConnection = this.wallet.getConnection();
       if (!this.walletConnection || !this.walletConnection.isConnected) {
-        throw new Error("Wallet not connected. Call connectWallet() first.");
+        throw new Error('Wallet not connected. Call connectWallet() first.');
       }
 
       const params: BridgeOperationParams = {
@@ -63,26 +72,38 @@ export class StellarBridgeExecutor {
 
       const sorobanAccount: SorobanAccount = {
         publicKey: this.walletConnection.publicKey,
-        sequenceNumber: "1",
+        sequenceNumber: '1',
       };
 
-      const preparedTx = await this.bridgeContract.prepareBridgeTransfer(params, sorobanAccount);
-      const signedTx = await this.wallet.signTransaction(JSON.stringify(preparedTx));
-      const result = await this.bridgeContract.submitBridgeTransfer(signedTx.signature);
+      const preparedTx = await this.bridgeContract.prepareBridgeTransfer(
+        params,
+        sorobanAccount,
+      );
+      const signedTx = await this.wallet.signTransaction(
+        JSON.stringify(preparedTx),
+      );
+      const result = await this.bridgeContract.submitBridgeTransfer(
+        signedTx.signature,
+      );
 
       // Log successful execution (without sensitive data)
-      console.log(JSON.stringify({
-        eventType: 'BRIDGE_TRANSFER',
-        timestamp: new Date().toISOString(),
-        metadata: {
-          adapter: 'stellar',
-          sourceChain: transfer.sourceChain,
-          targetChain: transfer.targetChain,
-          txHash: result.transactionHash.slice(0, 8) + '...' + result.transactionHash.slice(-8),
-          status: 'confirmed',
-          executionTimeMs: Date.now() - startTime,
-        }
-      }));
+      console.log(
+        JSON.stringify({
+          eventType: 'BRIDGE_TRANSFER',
+          timestamp: new Date().toISOString(),
+          metadata: {
+            adapter: 'stellar',
+            sourceChain: transfer.sourceChain,
+            targetChain: transfer.targetChain,
+            txHash:
+              result.transactionHash.slice(0, 8) +
+              '...' +
+              result.transactionHash.slice(-8),
+            status: 'confirmed',
+            executionTimeMs: Date.now() - startTime,
+          },
+        }),
+      );
 
       return {
         success: true,
@@ -91,21 +112,23 @@ export class StellarBridgeExecutor {
       };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      
+
       // Log failed execution
-      console.log(JSON.stringify({
-        eventType: 'BRIDGE_TRANSFER',
-        timestamp: new Date().toISOString(),
-        metadata: {
-          adapter: 'stellar',
-          sourceChain: transfer.sourceChain,
-          targetChain: transfer.targetChain,
-          status: 'failed',
-          errorCode: error instanceof Error ? error.name : 'UNKNOWN_ERROR',
-          executionTimeMs: Date.now() - startTime,
-        }
-      }));
-      
+      console.log(
+        JSON.stringify({
+          eventType: 'BRIDGE_TRANSFER',
+          timestamp: new Date().toISOString(),
+          metadata: {
+            adapter: 'stellar',
+            sourceChain: transfer.sourceChain,
+            targetChain: transfer.targetChain,
+            status: 'failed',
+            errorCode: error instanceof Error ? error.name : 'UNKNOWN_ERROR',
+            executionTimeMs: Date.now() - startTime,
+          },
+        }),
+      );
+
       return {
         success: false,
         error: msg,
@@ -133,31 +156,35 @@ export class StellarBridgeExecutor {
         networkFee: fees.baseFee,
         bridgeFee: fees.bridgeFee,
         totalFee: fees.totalFee,
-        gasEstimate: "300000",
+        gasEstimate: '300000',
       };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      throw new Error("Failed to estimate transfer cost: " + msg);
+      throw new Error('Failed to estimate transfer cost: ' + msg);
     }
   }
 
-  async getTransferStatus(transactionHash: string): Promise<BridgeOperationResult> {
+  async getTransferStatus(
+    transactionHash: string,
+  ): Promise<BridgeOperationResult> {
     try {
       return await this.bridgeContract.queryBridgeStatus(transactionHash);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      throw new Error("Failed to get transfer status: " + msg);
+      throw new Error('Failed to get transfer status: ' + msg);
     }
   }
 
-  async connectAndPrepare(network: "mainnet" | "testnet" = "mainnet"): Promise<WalletConnection> {
+  async connectAndPrepare(
+    network: 'mainnet' | 'testnet' = 'mainnet',
+  ): Promise<WalletConnection> {
     try {
       const connection = await this.wallet.connectWallet(network);
       this.walletConnection = connection;
       return connection;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      throw new Error("Failed to connect wallet: " + msg);
+      throw new Error('Failed to connect wallet: ' + msg);
     }
   }
 
@@ -167,9 +194,9 @@ export class StellarBridgeExecutor {
     pendingTransactions: number;
   }> {
     try {
-      const url = this.horizonUrl + "/ledgers?order=desc&limit=1";
+      const url = this.horizonUrl + '/ledgers?order=desc&limit=1';
       const response = await fetch(url);
-      const data = await response.json() as any;
+      const data = await response.json();
 
       return {
         baseFee: data.records?.[0]?.base_fee_in_stroops || 100000,

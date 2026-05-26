@@ -26,7 +26,7 @@ export class RpcHealthChecker {
     this.config = {
       checkIntervalMs: config.checkIntervalMs ?? 30000,
       timeoutMs: config.timeoutMs ?? 5000,
-      unhealthyThreshold: config.unhealthyThreshold ?? 3
+      unhealthyThreshold: config.unhealthyThreshold ?? 3,
     };
   }
 
@@ -40,7 +40,7 @@ export class RpcHealthChecker {
       lastCheckTime: Date.now(),
       consecutiveFailures: 0,
       responseTimeMs: 0,
-      priority
+      priority,
     });
   }
 
@@ -49,7 +49,7 @@ export class RpcHealthChecker {
    */
   getHealthyEndpoint(): RpcEndpoint | null {
     const healthy = Array.from(this.endpoints.values())
-      .filter(ep => ep.healthy)
+      .filter((ep) => ep.healthy)
       .sort((a, b) => a.priority - b.priority);
 
     return healthy.length > 0 ? healthy[0] : null;
@@ -60,7 +60,7 @@ export class RpcHealthChecker {
    */
   getHealthyEndpoints(): RpcEndpoint[] {
     return Array.from(this.endpoints.values())
-      .filter(ep => ep.healthy)
+      .filter((ep) => ep.healthy)
       .sort((a, b) => a.priority - b.priority);
   }
 
@@ -76,7 +76,10 @@ export class RpcHealthChecker {
     try {
       // Simple health check - try a basic RPC call
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.config.timeoutMs);
+      const timeoutId = setTimeout(
+        () => controller.abort(),
+        this.config.timeoutMs,
+      );
 
       const response = await fetch(url, {
         method: 'POST',
@@ -84,9 +87,9 @@ export class RpcHealthChecker {
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 1,
-          method: 'getLedger'
+          method: 'getLedger',
         }),
-        signal: controller.signal
+        signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
@@ -109,7 +112,7 @@ export class RpcHealthChecker {
       if (endpoint.consecutiveFailures >= this.config.unhealthyThreshold) {
         endpoint.healthy = false;
         console.warn(
-          `[RpcHealthChecker] Endpoint ${url} marked unhealthy after ${endpoint.consecutiveFailures} failures`
+          `[RpcHealthChecker] Endpoint ${url} marked unhealthy after ${endpoint.consecutiveFailures} failures`,
         );
       }
 
@@ -146,8 +149,8 @@ export class RpcHealthChecker {
     }
 
     // Initial check
-    this.checkAll().catch(err =>
-      console.error('[RpcHealthChecker] Initial health check failed:', err)
+    this.checkAll().catch((err) =>
+      console.error('[RpcHealthChecker] Initial health check failed:', err),
     );
   }
 
@@ -166,19 +169,19 @@ export class RpcHealthChecker {
    */
   getStats() {
     const endpoints = Array.from(this.endpoints.values());
-    const healthy = endpoints.filter(ep => ep.healthy).length;
+    const healthy = endpoints.filter((ep) => ep.healthy).length;
 
     return {
       total: endpoints.length,
       healthy,
       unhealthy: endpoints.length - healthy,
-      endpoints: endpoints.map(ep => ({
+      endpoints: endpoints.map((ep) => ({
         url: ep.url,
         healthy: ep.healthy,
         responseTimeMs: ep.responseTimeMs,
         consecutiveFailures: ep.consecutiveFailures,
-        lastCheckTime: new Date(ep.lastCheckTime).toISOString()
-      }))
+        lastCheckTime: new Date(ep.lastCheckTime).toISOString(),
+      })),
     };
   }
 

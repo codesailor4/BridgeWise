@@ -101,7 +101,7 @@
     "coverageDirectory": "coverage",
     "testEnvironment": "jsdom",
     "setupFilesAfterEnv": ["<rootDir>/test/setup.ts"],
-    "moduleNameMapping": {
+    "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1",
       "^@bridgewise/ui-components(.*)$": "<rootDir>/libs/ui-components/src$1"
     }

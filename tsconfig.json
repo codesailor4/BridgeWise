@@ -20,7 +20,8 @@
     "lib": ["ES2021"]
   },
   "include": [
-    "apps/**/*"
+    "apps/**/*",
+    "src/**/*"
   ],
   "exclude": [
     "node_modules",

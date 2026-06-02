@@ -12,6 +12,8 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { TokenMetadataModule } from './token-metadata/token-metadata.module';
 import { VersionModule } from './version/version.module';
 import { WalletModule } from './wallet/wallet.module';
+import { SorobanContractModule } from './contracts/resolver/stellar/soroban-contract.module';
+import { StellarTimeoutModule } from './monitoring/timeouts/stellar/stellar-timeout.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { LoggerModule } from './logger/logger.module';
@@ -47,6 +49,8 @@ import { WalletSession } from './wallet/entities/wallet-session.entity';
     TokenMetadataModule,
     VersionModule,
     WalletModule,
+    SorobanContractModule,
+    StellarTimeoutModule,
     ThrottlerModule.forRoot([
       {
         ttl: 60000,

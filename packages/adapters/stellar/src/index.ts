@@ -56,5 +56,19 @@ export function createStellarAdapter(
   return new StellarBridgeExecutor(wallet, bridgeContract, horizonUrl);
 }
 
+// Adapter interface exports
+export type {
+  IBridgeAdapter,
+  ISorobanBridgeAdapter,
+  AdapterTransferRequest,
+  AdapterTransferOptions,
+  AdapterTransferResult,
+  AdapterTransferStatus,
+  AdapterTransferStatusResult,
+  AdapterFeeEstimate,
+  AdapterNetworkStats,
+  AdapterInfo,
+} from './interfaces/SorobanBridgeAdapter';
+
 // Version export
 export const version = '0.1.0';

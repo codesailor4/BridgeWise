@@ -4,14 +4,37 @@ import type {
   WalletAccount,
 } from '../../../../packages/wallet/src';
 import { stellarMetrics } from '../../../exporters/metrics/stellar';
+import { detectStellarNetwork } from '../../../networking/stellar';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const DEFAULT_CHECK_INTERVAL_MS = 15_000;
+const DEFAULT_PING_TIMEOUT_MS = 5_000;
+
+const HORIZON_URLS: Record<string, string> = {
+  'stellar:public':   'https://horizon.stellar.org',
+  'stellar:testnet':  'https://horizon-testnet.stellar.org',
+  'stellar:futurenet':'https://horizon-futurenet.stellar.org',
+};
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface WalletMonitorConfig {
-  /** Polling interval for heartbeat checks in milliseconds. Default is 15000 (15 seconds). */
+  /** Polling interval for heartbeat checks in milliseconds. Default: 15 000. */
   checkIntervalMs?: number;
-  /** Timeout for pings to the Stellar provider / Horizon in milliseconds. Default is 5000 (5 seconds). */
+  /** Timeout for pings to the Stellar provider / Horizon in milliseconds. Default: 5 000. */
   pingTimeoutMs?: number;
-  /** Custom Horizon URLs to ping for network checks. If not provided, falls back to the adapter's URL. */
+  /** Custom Horizon URLs keyed by chain ID. Falls back to built-in defaults. */
   horizonUrls?: Record<string, string>;
+  /**
+   * When enabled, attempts to auto-detect the active Stellar network by querying
+   * Horizon root endpoints and reading `network_passphrase`.
+   *
+   * You can also enable this via `STELLAR_AUTO_DETECT_NETWORK=true`.
+   */
+  autoDetectNetwork?: boolean;
+  /** Called when an unhandled error escapes a listener. Defaults to console.error. */
+  onListenerError?: (err: unknown, report: WalletHealthReport) => void;
 }
 
 export type WalletHealthStatus = 'healthy' | 'unhealthy' | 'disconnected';
@@ -29,236 +52,210 @@ export interface WalletHealthReport {
 
 export type HealthChangedCallback = (report: WalletHealthReport) => void;
 
+// ─── Errors ───────────────────────────────────────────────────────────────────
+
+class TimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TimeoutError';
+  }
+}
+
+// ─── Monitor ──────────────────────────────────────────────────────────────────
+
 /**
- * StellarWalletMonitor
  * Monitors connectivity and health of connected Stellar wallets.
- * Detects disconnections and emits health metrics via StellarMetricsExporter.
+ *
+ * - Polls every `checkIntervalMs` ms and on every connect/disconnect event.
+ * - Emits health metrics via `stellarMetrics`.
+ * - Notifies registered listeners only when status or error changes.
+ * - `start()` / `stop()` are idempotent.
  */
 export class StellarWalletMonitor {
   private readonly manager: WalletManager;
   private readonly config: Required<WalletMonitorConfig>;
-  private checkInterval: NodeJS.Timeout | null = null;
-  private healthReports: Map<string, WalletHealthReport> = new Map();
-  private listeners: Set<HealthChangedCallback> = new Set();
+
+  private checkInterval: ReturnType<typeof setInterval> | null = null;
+  private readonly healthReports = new Map<string, WalletHealthReport>();
+  private readonly listeners = new Set<HealthChangedCallback>();
+
+  /** Tracks in-flight per-wallet checks to prevent overlapping polls. */
+  private readonly inFlight = new Set<string>();
+  private detectedHorizonUrl: string | null = null;
 
   constructor(manager: WalletManager, config: WalletMonitorConfig = {}) {
     this.manager = manager;
     this.config = {
-      checkIntervalMs: config.checkIntervalMs ?? 15000,
-      pingTimeoutMs: config.pingTimeoutMs ?? 5000,
-      horizonUrls: config.horizonUrls ?? {},
+      checkIntervalMs: config.checkIntervalMs ?? DEFAULT_CHECK_INTERVAL_MS,
+      pingTimeoutMs:   config.pingTimeoutMs   ?? DEFAULT_PING_TIMEOUT_MS,
+      horizonUrls:     config.horizonUrls     ?? {},
+      autoDetectNetwork:
+        config.autoDetectNetwork ?? process.env.STELLAR_AUTO_DETECT_NETWORK === 'true',
+      onListenerError: config.onListenerError ??
+        ((err, report) =>
+          console.error(`[StellarWalletMonitor] Listener error for ${report.walletId}:`, err)),
     };
+
+    if (this.config.checkIntervalMs < 1_000) {
+      throw new RangeError('checkIntervalMs must be ≥ 1 000 ms');
+    }
+    if (this.config.pingTimeoutMs < 100) {
+      throw new RangeError('pingTimeoutMs must be ≥ 100 ms');
+    }
   }
 
+  // ─── Lifecycle ─────────────────────────────────────────────────────────
+
   /**
-   * Start monitoring Stellar wallets
+   * Start monitoring. Idempotent — calling twice has no effect.
+   * Performs an immediate health sweep before the first poll fires.
    */
   start(): void {
     if (this.checkInterval) return;
 
-    // Listen to Manager events for immediate state updates
     this.manager.on('connect', this.handleManagerConnect);
     this.manager.on('disconnect', this.handleManagerDisconnect);
 
-    // Initial check
     void this.checkAll();
 
-    // Start periodic polling
-    this.checkInterval = setInterval(() => {
-      void this.checkAll();
-    }, this.config.checkIntervalMs);
+    this.checkInterval = setInterval(
+      () => void this.checkAll(),
+      this.config.checkIntervalMs,
+    );
 
-    if (this.checkInterval.unref) {
-      this.checkInterval.unref();
-    }
+    // Don't prevent Node.js from exiting if nothing else keeps the loop alive
+    this.checkInterval.unref?.();
   }
 
   /**
-   * Stop monitoring Stellar wallets
+   * Stop monitoring and remove all manager event listeners.
+   * Idempotent — safe to call when already stopped.
    */
   stop(): void {
     if (this.checkInterval) {
       clearInterval(this.checkInterval);
       this.checkInterval = null;
     }
-
     this.manager.off('connect', this.handleManagerConnect);
     this.manager.off('disconnect', this.handleManagerDisconnect);
   }
 
-  /**
-   * Register a health changed listener
-   */
-  onHealthChanged(callback: HealthChangedCallback): void {
-    this.listeners.add(callback);
+  get isRunning(): boolean {
+    return this.checkInterval !== null;
   }
 
-  /**
-   * Unregister a health changed listener
-   */
+  // ─── Listeners ─────────────────────────────────────────────────────────
+
+  onHealthChanged(callback: HealthChangedCallback): () => void {
+    this.listeners.add(callback);
+    return () => this.listeners.delete(callback);
+  }
+
   offHealthChanged(callback: HealthChangedCallback): void {
     this.listeners.delete(callback);
   }
 
-  /**
-   * Get the current health report for a specific wallet
-   */
+  // ─── Queries ───────────────────────────────────────────────────────────
+
   getHealthReport(walletId: string): WalletHealthReport | null {
-    return this.healthReports.get(walletId) || null;
+    return this.healthReports.get(walletId) ?? null;
   }
 
-  /**
-   * Get all active health reports
-   */
   getAllHealthReports(): WalletHealthReport[] {
-    return Array.from(this.healthReports.values());
+    return [...this.healthReports.values()];
   }
 
+  getHealthySummary(): { healthy: number; unhealthy: number; disconnected: number } {
+    const counts = { healthy: 0, unhealthy: 0, disconnected: 0 };
+    for (const r of this.healthReports.values()) counts[r.status]++;
+    return counts;
+  }
+
+  // ─── Check orchestration ───────────────────────────────────────────────
+
   /**
-   * Check all Stellar wallets
+   * Run health checks on all known Stellar adapters concurrently.
+   * Skips adapters that already have an in-flight check to avoid pile-ups
+   * under a slow network or a very short polling interval.
    */
   async checkAll(): Promise<void> {
-    const stellarWallets = this.manager.getStellarWallets
-      ? this.manager.getStellarWallets()
-      : this.manager
-          .getAllAdapters()
-          .filter((a) => a.networkType === 'stellar');
+    const adapters = this.getStellarAdapters();
+    if (adapters.length === 0) return;
+
+    const results = await Promise.allSettled(
+      adapters
+        .filter((a) => !this.inFlight.has(a.id))
+        .map((a) => this.checkWallet(a)),
+    );
 
     let activeCount = 0;
-
-    for (const adapter of stellarWallets) {
-      const report = await this.checkWallet(adapter);
-      if (report.status === 'healthy') {
-        activeCount++;
-      }
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value.status === 'healthy') activeCount++;
     }
 
-    // Emit the active connections gauge count
     stellarMetrics.setWalletActiveConnections('stellar', activeCount);
   }
 
   /**
-   * Perform detailed health checks on a specific adapter
+   * Perform a full health check on a single adapter.
+   * Concurrent calls for the same wallet are deduplicated via `inFlight`.
    */
   async checkWallet(adapter: WalletAdapter): Promise<WalletHealthReport> {
+    const { id: walletId } = adapter;
+
+    if (this.inFlight.has(walletId)) {
+      return this.healthReports.get(walletId) ?? this.makeDisconnectedReport(walletId, null);
+    }
+
+    this.inFlight.add(walletId);
+    try {
+      return await this.performCheck(adapter);
+    } finally {
+      this.inFlight.delete(walletId);
+    }
+  }
+
+  // ─── Core check logic ──────────────────────────────────────────────────
+
+  private async performCheck(adapter: WalletAdapter): Promise<WalletHealthReport> {
     const walletId = adapter.id;
     let account: WalletAccount | null = null;
 
     try {
       account = await adapter.getAccount();
     } catch {
-      // Failed to retrieve account details
+      // Treat as disconnected — provider may have gone away
     }
 
     if (!account) {
-      const report: WalletHealthReport = {
-        walletId,
-        address: null,
-        status: 'disconnected',
-        providerConnected: false,
-        horizonConnected: false,
-        lastChecked: new Date(),
-      };
+      const report = this.makeDisconnectedReport(walletId, null);
       this.updateReport(walletId, report);
       return report;
     }
 
-    const address = account.address;
-    const startTime = Date.now();
-    let providerConnected = false;
-    let horizonConnected = false;
-    let errorMsg: string | undefined;
+    const { address, chainId } = account;
+    const checkStart = Date.now();
 
-    // 1. Verify provider connection & responsiveness
-    try {
-      const provider = (adapter as any).provider;
-      if (provider) {
-        const isConnectedCheck =
-          typeof provider.isConnected === 'function'
-            ? provider.isConnected()
-            : true;
+    const [providerResult, horizonResult] = await Promise.allSettled([
+      this.checkProvider(adapter),
+      this.checkHorizon(chainId, adapter),
+    ]);
 
-        if (isConnectedCheck) {
-          // Timeout provider query to verify responsiveness
-          await this.withTimeout(
-            provider.publicKey(),
-            this.config.pingTimeoutMs,
-            'Provider publicKey() query timed out',
-          );
-          providerConnected = true;
-        } else {
-          errorMsg = 'Provider isConnected() returned false';
-        }
-      } else {
-        errorMsg = 'Provider not initialized on adapter';
-      }
-    } catch (err: any) {
-      providerConnected = false;
-      errorMsg = `Provider error: ${err.message || err}`;
-    }
+    const pingLatencyMs = Date.now() - checkStart;
 
-    // 2. Verify Horizon connectivity
-    let horizonUrl = this.config.horizonUrls[account.chainId] || '';
-    if (!horizonUrl && typeof (adapter as any).getHorizonUrl === 'function') {
-      try {
-        horizonUrl = (adapter as any).getHorizonUrl();
-      } catch {
-        // Ignore fallback failures
-      }
-    }
-    if (!horizonUrl) {
-      // Hardcoded defaults based on chain ID
-      const chainId = account.chainId || 'stellar:public';
-      if (chainId.includes('testnet')) {
-        horizonUrl = 'https://horizon-testnet.stellar.org';
-      } else if (chainId.includes('futurenet')) {
-        horizonUrl = 'https://horizon-futurenet.stellar.org';
-      } else {
-        horizonUrl = 'https://horizon.stellar.org';
-      }
-    }
+    const providerConnected = providerResult.status === 'fulfilled' && providerResult.value.ok;
+    const horizonConnected  = horizonResult.status  === 'fulfilled' && horizonResult.value.ok;
 
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(
-        () => controller.abort(),
-        this.config.pingTimeoutMs,
-      );
+    // Collect first meaningful error string
+    const errorMsg = this.firstError(providerResult, horizonResult);
 
-      const response = await fetch(horizonUrl, {
-        method: 'GET',
-        signal: controller.signal,
-      });
+    const status: WalletHealthStatus =
+      providerConnected && horizonConnected ? 'healthy' : 'unhealthy';
 
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        horizonConnected = true;
-      } else {
-        errorMsg = errorMsg || `Horizon returned status ${response.status}`;
-      }
-    } catch (err: any) {
-      horizonConnected = false;
-      errorMsg =
-        errorMsg || `Horizon reachability error: ${err.message || err}`;
-    }
-
-    const endTime = Date.now();
-    const latency = endTime - startTime;
-
-    // Record ping latency
     if (providerConnected) {
-      stellarMetrics.recordWalletPingLatency(walletId, latency);
+      stellarMetrics.recordWalletPingLatency(walletId, pingLatencyMs);
     }
-
-    // Determine final status
-    let status: WalletHealthStatus = 'healthy';
-    if (!providerConnected || !horizonConnected) {
-      status = 'unhealthy';
-      stellarMetrics.setWalletHealth(walletId, address, 0);
-    } else {
-      stellarMetrics.setWalletHealth(walletId, address, 1);
-    }
+    stellarMetrics.setWalletHealth(walletId, address, status === 'healthy' ? 1 : 0);
 
     const report: WalletHealthReport = {
       walletId,
@@ -266,7 +263,7 @@ export class StellarWalletMonitor {
       status,
       providerConnected,
       horizonConnected,
-      pingLatencyMs: providerConnected ? latency : undefined,
+      pingLatencyMs: providerConnected ? pingLatencyMs : undefined,
       lastChecked: new Date(),
       error: errorMsg,
     };
@@ -275,79 +272,194 @@ export class StellarWalletMonitor {
     return report;
   }
 
-  private handleManagerConnect = (data: any): void => {
-    const { walletId } = data;
-    const adapter = this.manager.getAdapter(walletId);
-    if (adapter && adapter.networkType === 'stellar') {
-      stellarMetrics.recordWalletConnection(walletId);
-      void this.checkWallet(adapter);
+  // ─── Provider check ────────────────────────────────────────────────────
+
+  private async checkProvider(
+    adapter: WalletAdapter,
+  ): Promise<{ ok: boolean; error?: string }> {
+    const provider = (adapter as any).provider;
+
+    if (!provider) {
+      return { ok: false, error: 'Provider not initialised on adapter' };
     }
-  };
 
-  private handleManagerDisconnect = (data: any): void => {
-    const { walletId } = data;
-    const adapter = this.manager.getAdapter(walletId);
-    if (adapter && adapter.networkType === 'stellar') {
-      stellarMetrics.recordWalletDisconnect(walletId, 'user_disconnected');
+    if (typeof provider.isConnected === 'function' && !provider.isConnected()) {
+      return { ok: false, error: 'Provider isConnected() returned false' };
+    }
 
-      const previousReport = this.healthReports.get(walletId);
-      const address = previousReport?.address || null;
-
-      const report: WalletHealthReport = {
-        walletId,
-        address,
-        status: 'disconnected',
-        providerConnected: false,
-        horizonConnected: false,
-        lastChecked: new Date(),
+    try {
+      await withTimeout(
+        Promise.resolve(provider.publicKey()),
+        this.config.pingTimeoutMs,
+        'Provider publicKey() timed out',
+      );
+      return { ok: true };
+    } catch (err) {
+      return {
+        ok: false,
+        error: `Provider error: ${err instanceof Error ? err.message : String(err)}`,
       };
+    }
+  }
 
-      this.updateReport(walletId, report);
-      if (address) {
-        stellarMetrics.setWalletHealth(walletId, address, 0);
+  // ─── Horizon check ─────────────────────────────────────────────────────
+
+  private async checkHorizon(
+    chainId: string,
+    adapter: WalletAdapter,
+  ): Promise<{ ok: boolean; error?: string }> {
+    const url = await this.resolveHorizonUrl(chainId, adapter);
+
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(
+        () => controller.abort(),
+        this.config.pingTimeoutMs,
+      );
+
+      let response: Response;
+      try {
+        response = await fetch(url, { method: 'HEAD', signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+
+      if (response.ok) return { ok: true };
+      return { ok: false, error: `Horizon returned HTTP ${response.status}` };
+    } catch (err) {
+      return {
+        ok: false,
+        error: `Horizon unreachable: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+
+  private async resolveHorizonUrl(
+    chainId: string,
+    adapter: WalletAdapter,
+  ): Promise<string> {
+    // 1. Caller-supplied override
+    if (this.config.horizonUrls[chainId]) return this.config.horizonUrls[chainId];
+
+    // 2. Adapter helper
+    if (typeof (adapter as any).getHorizonUrl === 'function') {
+      try {
+        const url: unknown = (adapter as any).getHorizonUrl();
+        if (typeof url === 'string' && url) return url;
+      } catch {
+        // Fall through
       }
     }
+
+    // 3. Built-in defaults, matched by substring to handle variant chain ids
+    for (const [key, url] of Object.entries(HORIZON_URLS)) {
+      if (chainId.includes(key.split(':')[1]!)) return url;
+    }
+
+    // 4. Optional auto-detection
+    if (this.config.autoDetectNetwork) {
+      if (this.detectedHorizonUrl) return this.detectedHorizonUrl;
+      try {
+        const detected = await detectStellarNetwork({
+          timeoutMs: this.config.pingTimeoutMs,
+        });
+        this.detectedHorizonUrl = detected.horizonUrl;
+        return detected.horizonUrl;
+      } catch {
+        // Fall through
+      }
+    }
+
+    // 5. Final fallback — mainnet
+    return HORIZON_URLS['stellar:public']!;
+  }
+
+  // ─── Manager event handlers ────────────────────────────────────────────
+
+  private handleManagerConnect = (data: { walletId: string }): void => {
+    const adapter = this.manager.getAdapter(data.walletId);
+    if (!adapter || adapter.networkType !== 'stellar') return;
+
+    stellarMetrics.recordWalletConnection(data.walletId);
+    void this.checkWallet(adapter);
   };
+
+  private handleManagerDisconnect = (data: { walletId: string }): void => {
+    const { walletId } = data;
+    const adapter = this.manager.getAdapter(walletId);
+    if (!adapter || adapter.networkType !== 'stellar') return;
+
+    stellarMetrics.recordWalletDisconnect(walletId, 'user_disconnected');
+
+    const address = this.healthReports.get(walletId)?.address ?? null;
+    const report = this.makeDisconnectedReport(walletId, address);
+    this.updateReport(walletId, report);
+
+    if (address) stellarMetrics.setWalletHealth(walletId, address, 0);
+  };
+
+  // ─── Report helpers ────────────────────────────────────────────────────
 
   private updateReport(walletId: string, report: WalletHealthReport): void {
     const previous = this.healthReports.get(walletId);
     this.healthReports.set(walletId, report);
 
-    if (
+    const changed =
       !previous ||
       previous.status !== report.status ||
-      previous.error !== report.error
-    ) {
-      // Trigger listeners
-      for (const listener of this.listeners) {
-        try {
-          listener(report);
-        } catch (err) {
-          console.error(`[StellarWalletMonitor] Error in listener:`, err);
-        }
+      previous.error  !== report.error;
+
+    if (!changed) return;
+
+    for (const listener of this.listeners) {
+      try {
+        listener(report);
+      } catch (err) {
+        this.config.onListenerError(err, report);
       }
     }
   }
 
-  private withTimeout<T>(
-    promise: Promise<T>,
-    timeoutMs: number,
-    timeoutErrorMsg: string,
-  ): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(new Error(timeoutErrorMsg));
-      }, timeoutMs);
-
-      promise
-        .then((res) => {
-          clearTimeout(timer);
-          resolve(res);
-        })
-        .catch((err) => {
-          clearTimeout(timer);
-          reject(err);
-        });
-    });
+  private makeDisconnectedReport(
+    walletId: string,
+    address: string | null,
+  ): WalletHealthReport {
+    return {
+      walletId,
+      address,
+      status: 'disconnected',
+      providerConnected: false,
+      horizonConnected: false,
+      lastChecked: new Date(),
+    };
   }
+
+  private getStellarAdapters(): WalletAdapter[] {
+    if (typeof this.manager.getStellarWallets === 'function') {
+      return this.manager.getStellarWallets();
+    }
+    return this.manager.getAllAdapters().filter((a) => a.networkType === 'stellar');
+  }
+
+  private firstError(
+    ...results: PromiseSettledResult<{ ok: boolean; error?: string }>[]
+  ): string | undefined {
+    for (const r of results) {
+      if (r.status === 'rejected') return String(r.reason);
+      if (!r.value.ok && r.value.error) return r.value.error;
+    }
+    return undefined;
+  }
+}
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new TimeoutError(message)), ms);
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e) => { clearTimeout(timer); reject(e); },
+    );
+  });
 }

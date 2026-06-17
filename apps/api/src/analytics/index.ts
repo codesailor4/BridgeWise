@@ -11,9 +11,14 @@ export { AnalyticsModule } from './analytics.module';
 // Services
 export { AnalyticsService } from './analytics.service';
 export { AnalyticsCollector } from './analytics.collector';
+export { StellarAnalyticsService } from './stellar/stellar-analytics.service';
 
 // Controller
 export { AnalyticsController } from './analytics.controller';
+export { StellarAnalyticsController } from './stellar/stellar-analytics.controller';
+
+// DTOs
+export { StellarTimeSeriesQueryDto, StellarAggregatedMetricsDto } from './stellar/dto/stellar-analytics.dto';
 
 // Entities
 export { BridgeAnalytics } from './entities/bridge-analytics.entity';

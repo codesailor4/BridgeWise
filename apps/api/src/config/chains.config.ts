@@ -3,7 +3,7 @@
  * Now uses dynamic loading from configuration files and environment variables
  */
 
-export { ChainConfig } from './chain-config-schema';
+export type { ChainConfig } from './chain-config-schema';
 export { DynamicChainConfigLoader } from './dynamic-chain-loader';
 
 import { DynamicChainConfigLoader } from './dynamic-chain-loader';

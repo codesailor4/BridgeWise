@@ -55,6 +55,8 @@ export class TransactionsService {
     if (dto.currentStep !== undefined)
       transaction.currentStep = dto.currentStep;
     if (dto.error) transaction.error = dto.error;
+    if (dto.retryCount !== undefined) transaction.retryCount = dto.retryCount;
+    if (dto.maxRetries !== undefined) transaction.maxRetries = dto.maxRetries;
 
     if (dto.status === TransactionStatus.COMPLETED) {
       transaction.completedAt = new Date();

@@ -11,6 +11,8 @@ import { MetricsStreamService } from './metrics-stream.service';
 import { MetricsStreamController } from './metrics-stream.controller';
 import { BridgeAnalytics } from './entities/bridge-analytics.entity';
 import { PerformanceMetricService } from './performance-metric.service';
+import { StellarAnalyticsController } from './stellar/stellar-analytics.controller';
+import { StellarAnalyticsService } from './stellar/stellar-analytics.service';
 
 /**
  * Analytics Module
@@ -22,6 +24,7 @@ import { PerformanceMetricService } from './performance-metric.service';
  * - REST API endpoints for analytics data
  * - Quote abandonment tracking
  * - Bridge usage heatmap data
+ * - Dedicated Stellar/Soroban bridge analytics endpoints
  */
 @Module({
   imports: [TypeOrmModule.forFeature([BridgeAnalytics])],
@@ -30,6 +33,7 @@ import { PerformanceMetricService } from './performance-metric.service';
     AbandonmentTrackingController,
     BridgeUsageHeatmapController,
     MetricsStreamController,
+    StellarAnalyticsController,
   ],
   providers: [
     AnalyticsService,
@@ -38,6 +42,7 @@ import { PerformanceMetricService } from './performance-metric.service';
     BridgeUsageHeatmapService,
     MetricsStreamService,
     PerformanceMetricService,
+    StellarAnalyticsService,
   ],
   exports: [
     AnalyticsService,
@@ -45,6 +50,7 @@ import { PerformanceMetricService } from './performance-metric.service';
     AbandonmentTrackingService,
     BridgeUsageHeatmapService,
     MetricsStreamService,
+    StellarAnalyticsService,
   ],
 })
 export class AnalyticsModule {}

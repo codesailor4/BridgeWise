@@ -61,4 +61,24 @@ export class UpdateTransactionDto {
   @IsOptional()
   @IsString()
   error?: string;
+
+  @ApiProperty({
+    type: Number,
+    description: 'Current retry count',
+    required: false,
+    example: 1,
+  })
+  @IsOptional()
+  @IsNumber()
+  retryCount?: number;
+
+  @ApiProperty({
+    type: Number,
+    description: 'Maximum number of retries allowed',
+    required: false,
+    example: 3,
+  })
+  @IsOptional()
+  @IsNumber()
+  maxRetries?: number;
 }

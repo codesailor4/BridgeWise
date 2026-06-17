@@ -16,8 +16,8 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { SorobanContractResolver } from './soroban-contract.resolver';
-import {
-  SorobanNetwork,
+import { SorobanNetwork } from './soroban-contract.types';
+import type {
   ResolvedContract,
   ContractValidationResult,
   BatchResolveResult,

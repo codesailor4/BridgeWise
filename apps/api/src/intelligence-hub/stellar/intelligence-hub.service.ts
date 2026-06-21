@@ -149,7 +149,9 @@ export class IntelligenceHubService {
   }
 
   private matchScore(text: string, query: string): number {
-    const matches = (text.match(new RegExp(query.replace(/[.*+?^${}()|[\]\]/g, '\$&'), 'g')) || []).length;
-    return matches / text.split(' ').length;
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const matches = (text.match(new RegExp(escaped, 'g')) || []).length;
+    const wordCount = text.split(' ').length;
+    return wordCount > 0 ? matches / wordCount : 0;
   }
 }

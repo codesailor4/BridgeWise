@@ -6,6 +6,7 @@ import { ConfigModule } from './config/config.module';
 import { ConfigService } from './config/config.service';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { StellarReputationModule } from './reputation/providers/stellar/stellar-reputation.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { BenchmarkModule } from './benchmark/benchmark.module';
 import { AnalyticsModule } from './analytics/analytics.module';
@@ -21,6 +22,8 @@ import { StellarExplainabilityModule } from './explainability/routes/stellar/exp
 import { Transaction } from './transactions/entities/transaction.entity';
 import { WalletSession } from './wallet/entities/wallet-session.entity';
 import { RecommendationV2Module } from './api/routes/v2/recommendation.module';
+import { IntelligenceHubModule } from './intelligence-hub/stellar/intelligence-hub.module';
+import { AssetDiscoveryModule } from './api/assets/discovery/stellar/asset-discovery.module';
 
 @Module({
   imports: [
@@ -50,10 +53,13 @@ import { RecommendationV2Module } from './api/routes/v2/recommendation.module';
     AnalyticsModule,
     TokenMetadataModule,
     VersionModule,
+       StellarReputationModule,
     WalletModule,
     SorobanContractModule,
     StellarTimeoutModule,
     RecommendationV2Module,
+    IntelligenceHubModule,
+    AssetDiscoveryModule,
     ThrottlerModule.forRoot([
       {
         ttl: 60000,

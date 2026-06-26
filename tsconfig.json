@@ -17,11 +17,15 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
-    "lib": ["ES2021"]
+    "lib": ["ES2021"],
+    "types": ["node"]
   },
   "include": [
     "apps/**/*",
-    "src/**/*"
+    "libs/**/*",
+    "src/**/*",
+    "test/**/*",
+    "tests/**/*"
   ],
   "exclude": [
     "node_modules",

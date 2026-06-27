@@ -1,0 +1,1 @@
+// This file will contain the module definition for the asset coverage feature.

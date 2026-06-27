@@ -26,6 +26,7 @@ import { IntelligenceHubModule } from './intelligence-hub/stellar/intelligence-h
 import { AssetDiscoveryModule } from './api/assets/discovery/stellar/asset-discovery.module';
 import { RecommendationMetricsModule } from './metrics/recommendations/recommendation-metrics.module';
 import { StellarEcosystemMetricsModule } from './metrics/ecosystem/stellar/stellar-ecosystem-metrics.module';
+import { StellarProviderDiscoveryModule } from 'src/providers/discovery/stellar/stellar-provider-discovery.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { StellarEcosystemMetricsModule } from './metrics/ecosystem/stellar/stell
     AssetDiscoveryModule,
     RecommendationMetricsModule,
     StellarEcosystemMetricsModule,
+    StellarProviderDiscoveryModule,
     ThrottlerModule.forRoot([
       {
         ttl: 60000,

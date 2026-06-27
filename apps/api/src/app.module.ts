@@ -26,6 +26,7 @@ import { IntelligenceHubModule } from './intelligence-hub/stellar/intelligence-h
 import { AssetDiscoveryModule } from './api/assets/discovery/stellar/asset-discovery.module';
 import { RecommendationMetricsModule } from './metrics/recommendations/recommendation-metrics.module';
 import { StellarEcosystemMetricsModule } from './metrics/ecosystem/stellar/stellar-ecosystem-metrics.module';
+import { RouteInsightsExporterModule } from './exporters/routes/stellar/route-insights-exporter.module';
 
 @Module({
   imports: [
@@ -55,7 +56,7 @@ import { StellarEcosystemMetricsModule } from './metrics/ecosystem/stellar/stell
     AnalyticsModule,
     TokenMetadataModule,
     VersionModule,
-       StellarReputationModule,
+    StellarReputationModule,
     WalletModule,
     SorobanContractModule,
     StellarTimeoutModule,
@@ -73,6 +74,7 @@ import { StellarEcosystemMetricsModule } from './metrics/ecosystem/stellar/stell
     // Explainability API for Stellar route recommendations
     // Exposed through /explainability/stellar endpoints.
     StellarExplainabilityModule,
+    RouteInsightsExporterModule,
   ],
   controllers: [AppController],
   providers: [

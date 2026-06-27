@@ -276,7 +276,7 @@ export class RouteInsightsExporterService {
       nullPlaceholder: '',
     };
 
-    return this.csvBuilder.build(data, buildOptions);
+    return this.csvBuilder.build(data as any, buildOptions);
   }
 
   /**

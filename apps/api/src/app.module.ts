@@ -27,6 +27,7 @@ import { AssetDiscoveryModule } from './api/assets/discovery/stellar/asset-disco
 import { RecommendationMetricsModule } from './metrics/recommendations/recommendation-metrics.module';
 import { StellarEcosystemMetricsModule } from './metrics/ecosystem/stellar/stellar-ecosystem-metrics.module';
 import { StellarProviderDiscoveryModule } from 'src/providers/discovery/stellar/stellar-provider-discovery.module';
+import { AssetCoverageModule } from 'src/analytics/coverage/stellar/asset-coverage.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { StellarProviderDiscoveryModule } from 'src/providers/discovery/stellar/
     RecommendationMetricsModule,
     StellarEcosystemMetricsModule,
     StellarProviderDiscoveryModule,
+    AssetCoverageModule,
     ThrottlerModule.forRoot([
       {
         ttl: 60000,

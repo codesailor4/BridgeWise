@@ -28,6 +28,7 @@ import { RecommendationMetricsModule } from './metrics/recommendations/recommend
 import { StellarEcosystemMetricsModule } from './metrics/ecosystem/stellar/stellar-ecosystem-metrics.module';
 import { StellarProviderDiscoveryModule } from '../../../src/providers/discovery/stellar/stellar-provider-discovery.module';
 import { AssetCoverageModule } from '../../../src/analytics/coverage/stellar/asset-coverage.module';
+import { RouteInsightsExporterModule } from './exporters/routes/stellar/route-insights-exporter.module';
 
 @Module({
   imports: [
@@ -57,7 +58,7 @@ import { AssetCoverageModule } from '../../../src/analytics/coverage/stellar/ass
     AnalyticsModule,
     TokenMetadataModule,
     VersionModule,
-       StellarReputationModule,
+    StellarReputationModule,
     WalletModule,
     SorobanContractModule,
     StellarTimeoutModule,
@@ -77,6 +78,7 @@ import { AssetCoverageModule } from '../../../src/analytics/coverage/stellar/ass
     // Explainability API for Stellar route recommendations
     // Exposed through /explainability/stellar endpoints.
     StellarExplainabilityModule,
+    RouteInsightsExporterModule,
   ],
   controllers: [AppController],
   providers: [

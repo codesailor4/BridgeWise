@@ -121,6 +121,58 @@ function MyComponent() {
 }
 ```
 
+## Stellar Route Congestion Monitoring
+
+BridgeWise monitors route congestion across Stellar bridge providers to detect latency spikes, elevated failure rates, and queue buildup.
+
+### Features
+
+- Real-time congestion metrics collection (latency, failure rate, queue depth, throughput, pending transactions)
+- Spike detection based on historical baseline using configurable multipliers
+- Threshold-based status classification: `normal → elevated → congested → severe`
+- Alert generation with severity levels: `low | medium | high | critical`
+- Automatic alert resolution when metrics recover
+- Event-driven architecture via `EventEmitter` (`'alert'`, `'status-change'` events)
+
+### Usage
+
+```typescript
+import { StellarCongestionMonitor } from '@bridgewise/monitoring';
+
+const monitor = new StellarCongestionMonitor({
+  checkIntervalMs: 30_000,
+  timeoutMs: 5_000,
+  historyWindowSize: 100,
+  spikeMultiplier: 2.0,
+  minDataPoints: 5,
+  thresholds: {
+    latencyMs: 5_000,
+    failureRate: 0.3,
+    queueDepth: 100,
+    throughput: 10,
+    pendingTransactions: 500,
+  },
+  onAlert: (alert) => console.log('Congestion alert:', alert),
+  onStatusChange: (status) => console.log('Status change:', status),
+  onError: (error) => console.error('Probe error:', error),
+});
+
+monitor.registerRoute('stellar-bridge-1', async () => {
+  // Return current congestion metrics for the route
+  return {
+    latencyMs: 1200,
+    failureRate: 0.05,
+    queueDepth: 20,
+    throughput: 45,
+    pendingTransactions: 80,
+  };
+});
+
+monitor.startMonitoring();
+```
+
+Refer to `src/monitoring/congestion/stellar/` for the full implementation.
+
 ## Project setup
 
 ```bash
